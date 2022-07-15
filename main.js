@@ -1,4 +1,3 @@
-const {exec} = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const args = process.argv.slice(2);
@@ -64,7 +63,12 @@ folders.forEach((folderName) => {
             episodeNum = "E" + String(episodeNums[0]).padStart(3, "0");
         } else {
             // If no episode num, give default by index
-            episodeNum = "E" + (eps_count+1);
+            episodeNum = "E" + String(eps_count).padStart(3, "0");
+        }
+
+        if (episodeNums.length !== 0) {
+            // Make sure to not overwrite a just written episode name that had a episode number in the filename
+            eps_count = episodeNums[episodeNums.length-1]+1; 
         }
         
         // Calculate the new filepath
