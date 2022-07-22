@@ -1,14 +1,38 @@
 const path = require('path');
 const fs = require('fs');
-const args = process.argv.slice(2);
+const yargs = require('yargs/yargs');
+const { hideBin } = require('yargs/helpers');
+const argv = yargs(hideBin(process.argv)).options({
+    "path": {
+        alias: 'p',
+        demandOption: true,
+        type: 'string',
+        describe: 'The path to find the show seasons.'
+    },
+    "ignore_filename": {
+        alias: 'if',
+        demandOption: false,
+        default: false,
+        type: 'boolean',
+        describe: 'ignore all information from the filename (useful after failed renaming attempt).'
+    },
+    "dry_run": {
+        alias: 'd',
+        demandOption: false,
+        default: false,
+        type: 'boolean',
+        describe: 'dry run, just print the changes to console.'
+    }
+}).parseSync();
 
-// Take in filepath
-if (!args || !args[0]) {
-    console.error("Must include path argument");
-    throw new Error("Must include path argument");
+
+const EPISODE_PATH = argv.path;
+const IGNORE_FILENAME = argv.ignore_filename;
+const DRY_RUN = argv.dry_run;
+
+if (DRY_RUN) {
+    console.log("This is just a dry run.");
 }
-
-const EPISODE_PATH = args[0];
 
 if (!fs.existsSync(EPISODE_PATH)) {
     console.error("no dir: "+EPISODE_PATH);
@@ -45,15 +69,24 @@ folders.forEach((folderName) => {
 
         // Figure out if they already have an episode num (to account for missing episodes)
         let episodeNums = [];
-        for (m of fileName.matchAll(/(?:[\s,\d,-](?:E|(?:(?:E|e)pisode\s*))(\d+))/g)) { // Matches some digit, whitespace, or '-' then Exx or Episode xx
-            if (m?.[1]) {
-                episodeNums.push(m[1]);
+        if (!IGNORE_FILENAME) {
+            for (m of fileName.matchAll(/(?:[\s,\d,-](?:E|(?:(?:E|e)pisode\s*))(\d+))/g)) { // Matches some digit, whitespace, or '-' then Exx or Episode xx
+                if (m?.[1]) {
+                    episodeNums.push(m[1]);
+                }
             }
         }
         
+        // Make sure that no episodeNum is less than current eps_count, otherwise we would overwrite an existing file!
+        episodeNums.forEach((episodeNum) => {
+            if (episodeNum < eps_count) {
+                throw folderName+"/"+fileName+" has a lesser episode num than current count. Exiting.";
+            }
+        });
+        
         // Calculate the episode num to use
         let episodeNum = "";
-        if (episodeNums.length > 1) {
+        if (episodeNums.length === 2) {
             // Check for compound episodes
             episodeNums.forEach((n, i) => {
                 episodeNum += i > 0 ? "-E" : "E";
@@ -66,15 +99,16 @@ folders.forEach((folderName) => {
             episodeNum = "E" + String(eps_count).padStart(3, "0");
         }
 
-        if (episodeNums.length !== 0) {
+        if (episodeNums.length === 1 || episodeNums.length ===2) {
             // Make sure to not overwrite a just written episode name that had a episode number in the filename
-            eps_count = episodeNums[episodeNums.length-1]+1; 
+            // By setting the eps_count to the current episode num + 1 if it was gotten from file name
+            eps_count = Number(episodeNums[episodeNums.length-1]); 
         }
         
         // Calculate the new filepath
         let filePath = path.join(folderPath, fileName);
         let newFileName = "S" + String(seasonNum).padStart(3, "0") + episodeNum;
-        let newFilePath = path.join(folderPath, newFileName);
+        let newFilePath = path.join(folderPath, newFileName + ext);
 
         // Check if there is a subs file next to video
         let subName = files.find((s) => {
@@ -82,6 +116,12 @@ folders.forEach((folderName) => {
                 return true;
             }
         });
+
+        // Make sure the filename doesn't already exist (unless it is the name we started with)
+        if (filePath !== newFilePath && fs.existsSync(newFilePath)) {
+            // Oh no, the new file path already exists, and it isn't this file!
+            throw "File Already Exists! "+newFilePath;
+        }
 
         if (subName) {
             // There is a subtitle file with this episode
@@ -103,12 +143,16 @@ folders.forEach((folderName) => {
             let newSubPath = path.join(folderPath, newSubName);
 
             // Rename the sub file
-            fs.renameSync(subPath, newSubPath+".srt");
+            if (!DRY_RUN) {
+                fs.renameSync(subPath, newSubPath+".srt");
+            }
             console.log(subPath+" => "+newSubPath+".srt");
         }
 
         // Rename the file
-        fs.renameSync(filePath, newFilePath+ext);
-        console.log(filePath+" => "+newFilePath+ext);
+        if (!DRY_RUN) {
+            fs.renameSync(filePath, newFilePath);
+        }
+        console.log(filePath+" => "+newFilePath);
     });
 });

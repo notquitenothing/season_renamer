@@ -1,0 +1,10 @@
+{
+  "name": "season_renamer",
+  "version": "1.0.0",
+  "scripts": {
+    "start": ""
+  },
+  "dependencies": {
+    "yargs": "^17.5.1"
+  }
+}
